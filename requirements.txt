@@ -1,0 +1,8 @@
+langgraph
+langgraph-checkpoint-sqlite
+requests
+pypdf
+ebooklib
+beautifulsoup4
+watchdog
+python-dotenv
