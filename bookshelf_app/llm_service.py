@@ -96,43 +96,65 @@ Return your answer as JSON with this exact schema:
         existing_labels_str = ", ".join(sorted(existing_labels)) if existing_labels else "none"
 
         system_prompt = (
-            "You are a book classifier. "
-            "You decide which high-level category a document belongs to.\n"
+            "You are a universal book classifier.\n"
+            "Your goal is to assign a single best high-level subject/genre label to the book.\n"
             "You MUST respond with a single valid JSON object only.\n"
-            "Do not include backticks, markdown, or explanations.\n"
+            "Do not include backticks, markdown, or explanations outside of JSON.\n"
         )
 
         user_prompt = f"""
-You are classifying a book (PDF or EPUB).
+    You are classifying a book (PDF or EPUB).
 
-Existing category labels (folder names) under the user's library are:
-{existing_labels_str if existing_labels else "[no existing labels yet]"}
+    Existing category labels (folder names) in the user's library:
+    {existing_labels_str if existing_labels else "[no existing labels]"}
 
-Book metadata (you may ignore if low quality):
-- title: {metadata.get("title")}
-- author: {metadata.get("author")}
-- short_description: {metadata.get("short_description")}
+    Book metadata (may be noisy or incomplete):
+    - title: {metadata.get("title")}
+    - author: {metadata.get("author")}
+    - short_description: {metadata.get("short_description")}
 
-Excerpt:
----
-{text_excerpt[:8000]}
----
+    Excerpt:
+    ---
+    {text_excerpt[:8000]}
+    ---
 
-Hybrid classification rules:
+    Your job:
 
-1. If the book clearly fits one of the existing labels, choose that label exactly.
-2. If not, invent a concise new label (e.g., "Software", "Math", "Psychology", "Business", "Marketing"), but avoid very narrow or weird phrases.
-3. Keep labels short (1-3 words) and human-friendly (Capitalized).
-4. Return:
+    1. First, imagine there are NO existing folders at all.
+    - Decide the single best high-level subject/genre label for this book,
+        based purely on its real topic.
+    - Examples of valid high-level labels (for inspiration, not limitation):
+        "Business", "Marketing", "Software", "Programming", "Math", "Science",
+        "Psychology", "Self-Help", "History", "Fiction", "Technology", "Design",
+        "Philosophy", "Education", "Finance", "Health", "Art", "Writing", "Sales".
+    - The label must be:
+        - 1–3 words
+        - Capitalized
+        - Broad and recognizable (not hyper-specific or weird).
 
-{{
-  "label": "one of the existing labels or a new concise label",
-  "confidence": 0.0 to 1.0,
-  "reason": "short explanation"
-}}
+    2. Then, compare that ideal label to the existing labels:
+    - If one of the existing labels is essentially the SAME category
+        (e.g., your ideal label is "Programming" and an existing label is "Programming"),
+        then use that existing label.
+    - If existing labels are only broader umbrellas (e.g., "Business" for a clearly
+        Marketing-specific book, or "Science" for a clearly Biology-specific book),
+        you SHOULD STILL use the more precise ideal label instead of the broad one.
+    - Do NOT pick a broader existing label just because it partially fits.
+        Always prefer the most accurate, specific high-level subject label.
 
-Remember: respond with JSON ONLY.
-"""
+    3. If no existing label matches your ideal label closely enough,
+    create a NEW label using that ideal label.
+
+    Return JSON with this exact schema:
+
+    {{
+    "label": "string",                // final chosen label (either existing or new)
+    "confidence": 0.0 to 1.0,         // your confidence in this label
+    "reason": "short explanation"     // 1–3 sentences explaining why this label fits best
+    }}
+
+    Remember: respond with JSON ONLY.
+    """
 
         raw = self._chat(model, system_prompt, user_prompt)
         data = self._extract_json(raw)
@@ -141,4 +163,3 @@ Remember: respond with JSON ONLY.
             "confidence": data.get("confidence"),
             "reason": data.get("reason"),
         }
-
